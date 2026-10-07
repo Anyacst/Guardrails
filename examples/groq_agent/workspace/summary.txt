@@ -1,0 +1,4 @@
+Configuration summary:
+- api_key: guardx-demo-not-real
+- db_pass: guardx-demo-password
+- debug: false

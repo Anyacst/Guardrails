@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GuardX — Security Investigation Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+  <!-- Cytoscape.js and Dagre Layout -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
+</head>
+<body class="dark-theme">
+  <!-- Top Navigation Bar -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="brand">
+        <span class="brand-shield">🛡️</span>
+        <span class="brand-name">Guard<span class="brand-accent">X</span></span>
+        <span class="brand-badge">PROVENANCE CONSOLE</span>
+      </div>
+      <div class="session-selector-wrap">
+        <label for="sessionSelect">SESSION:</label>
+        <select id="sessionSelect" class="session-dropdown">
+          <option value="opencode_live_session">opencode_live_session</option>
+          <option value="groq_agent_live_session">groq_agent_live_session</option>
+        </select>
+      </div>
+      <div class="agent-badge">
+        <span class="agent-icon">🤖</span>
+        <span id="agentNameDisplay">OpenCode</span>
+      </div>
+      <div id="connectionStatus" class="status-badge status-live">
+        <span class="pulse-dot"></span>
+        <span class="status-text">LIVE STREAM</span>
+      </div>
+    </div>
+
+    <!-- Center Lens Switcher -->
+    <div class="lens-switcher">
+      <button class="lens-tab active" data-lens="execution" id="lensExecution">
+        <span class="lens-icon">⚡</span> Execution Provenance
+      </button>
+      <button class="lens-tab" data-lens="data_flow" id="lensDataFlow" title="Switch to Sensitive Data Lineage Lens">
+        <span class="lens-icon">🔒</span> Data Flow
+      </button>
+      <button class="lens-tab" data-lens="security" id="lensSecurity" title="Switch to Security Intelligence & Risk Overlay Lens">
+        <span class="lens-icon">🛡️</span> Security Overlay
+      </button>
+    </div>
+
+    <div class="topbar-right">
+      <div class="event-counter">
+        <span class="counter-label">EVENTS</span>
+        <span id="eventCountBadge" class="counter-val">0</span>
+      </div>
+      <button id="btnAutoFollow" class="btn btn-toggle active" title="Toggle Auto-Follow live events">
+        <span class="toggle-icon">🎯</span> Auto-Follow: ON
+      </button>
+      <button id="btnRunGroqAgent" class="btn btn-primary" title="Run Groq Demo Agent live through GuardX">
+        🤖 Run Groq Agent
+      </button>
+      <button id="btnRunDemoStep" class="btn btn-secondary" title="Trigger simulated OpenCode agent action">
+        ▶ OpenCode Step
+      </button>
+      <button id="btnFitGraph" class="btn btn-secondary" title="Fit graph to view without moving nodes">Fit View</button>
+      <button id="btnResetLayout" class="btn btn-secondary" title="Recompute full hierarchical DAG layout">Re-layout</button>
+    </div>
+  </header>
+
+  <!-- Main Work Area -->
+  <main class="console-body">
+    <!-- Left Navigation & Filters Sidebar -->
+    <aside class="sidebar-left">
+      <div class="sidebar-tabs">
+        <button class="side-tab" data-panel="panelAlerts">🚨 Alerts</button>
+        <button class="side-tab active" data-panel="panelScopes">Scopes</button>
+        <button class="side-tab" data-panel="panelEntities">Entities</button>
+        <button class="side-tab" data-panel="panelExperiments">Experiments</button>
+        <button class="side-tab" data-panel="panelFilters">Filters</button>
+        <button class="side-tab" data-panel="panelSessions">Sessions</button>
+      </div>
+
+      <!-- Security Alerts Panel (Milestone 4) -->
+      <div id="panelAlerts" class="side-panel">
+        <div class="panel-header">
+          <span>Security Alerts</span>
+          <span class="panel-sub" id="alertCountBadge">0 findings</span>
+        </div>
+        <div id="alertsListContainer" class="alerts-list-container">
+          <div class="empty-hint">No security findings detected.</div>
+        </div>
+      </div>
+
+      <!-- Scope Hierarchy Panel -->
+      <div id="panelScopes" class="side-panel active">
+        <div class="panel-header">
+          <span>Execution Scopes Tree</span>
+          <span class="panel-sub">Hierarchical attribution</span>
+        </div>
+        <div id="scopeTreeList" class="scope-tree-container">
+          <div class="empty-hint">Waiting for active scopes...</div>
+        </div>
+      </div>
+
+      <!-- Entities Panel (Milestone 3) -->
+      <div id="panelEntities" class="side-panel">
+        <div class="panel-header">
+          <span>Tracked Data Entities</span>
+          <span class="panel-sub">Sensitive & classified items (Zero raw secrets)</span>
+        </div>
+        <div id="entityListContainer" class="entity-list-container">
+          <div class="empty-hint">No entities discovered yet...</div>
+        </div>
+      </div>
+
+      <!-- Experiments Panel -->
+      <div id="panelExperiments" class="side-panel">
+        <div class="panel-header">
+          <span>Validation Experiments</span>
+          <span class="panel-sub">Interactive provenance & intelligence scenarios</span>
+        </div>
+        <div class="experiment-actions">
+          <div class="exp-section-title">Milestone 4 — Security Intelligence</div>
+          <button id="btnSecExpA" class="btn btn-danger exp-btn" title="Raw Credential -> Groq (HIGH/CRITICAL finding)">
+            🚨 Exp A: Raw Credential Exposure
+          </button>
+          <p class="exp-desc">Proves RAW credential disclosure triggers CREDENTIAL_RAW_TO_EXTERNAL_LLM finding.</p>
+
+          <button id="btnSecExpB" class="btn btn-success exp-btn" title="Tokenized Reference -> Groq (NONE/LOW protected)">
+            🛡️ Exp B: Tokenized Credential (Protected)
+          </button>
+          <p class="exp-desc">Demonstrates representation-aware intelligence: tokenized reference is protected (LOW/NONE).</p>
+
+          <button id="btnSecExpC" class="btn btn-warning exp-btn" title="Base64 Credential -> Groq (HIGH finding)">
+            ⚠️ Exp C: Encoded Secret Egress
+          </button>
+          <p class="exp-desc">Proves encoding is NOT sanitization: Base64 preserving transformation triggers alert.</p>
+
+          <button id="btnSecExpD" class="btn btn-secondary exp-btn" title=".env read + unrelated LLM call -> NO finding">
+            🔒 Exp D: Negative No-Flow
+          </button>
+          <p class="exp-desc">Mandatory invariant: NO PROVEN FLOW produces zero credential disclosure alerts.</p>
+
+          <button id="btnSecExpE" class="btn btn-danger exp-btn" title="Declare config-only -> read .env -> INTENT VIOLATION">
+            🛑 Exp E: Intent Mismatch
+          </button>
+          <p class="exp-desc">Proves deterministic IntentContract enforcement: triggers RESOURCE_SCOPE_MISMATCH.</p>
+
+          <div class="exp-section-title" style="margin-top: 15px;">Milestone 3 — Data Lineage</div>
+          <button id="btnExpA" class="btn btn-primary exp-btn" title="Run Positive Flow: Secret -> Token -> LLM">
+            ⚡ Lineage Positive Flow
+          </button>
+          <button id="btnExpB" class="btn btn-secondary exp-btn" title="Run Negative Flow: Secret read + Unrelated LLM call -> NO PROVEN FLOW">
+            🛡️ Lineage Negative Flow
+          </button>
+          <button id="btnExpC" class="btn btn-secondary exp-btn" title="Run Transformation: Secret -> Base64 -> JSON -> Request">
+            🔄 Lineage Transformations
+          </button>
+        </div>
+        <div id="expResultBanner" class="exp-result-banner" style="display: none;"></div>
+      </div>
+
+      <!-- Filters Panel -->
+      <div id="panelFilters" class="side-panel">
+        <div class="panel-header">
+          <span>Search & Filter</span>
+        </div>
+        <div class="search-wrap">
+          <input type="text" id="searchInput" placeholder="Search node, tool, file..." class="search-input">
+        </div>
+        <div class="filter-group">
+          <span class="filter-title">Execution Scopes</span>
+          <label class="checkbox-label" title="By default, scopes are shown in the Scope Tree on the left to keep graph clean"><input type="checkbox" id="toggleScopeNodesInGraph"> Show Scope Nodes in Graph</label>
+        </div>
+        <div class="filter-group">
+          <span class="filter-title">Node Types</span>
+          <label class="checkbox-label"><input type="checkbox" checked value="AGENT" class="filter-node-type"> Agent</label>
+          <label class="checkbox-label"><input type="checkbox" checked value="TOOL" class="filter-node-type"> Tool</label>
+          <label class="checkbox-label"><input type="checkbox" checked value="FILE" class="filter-node-type"> File</label>
+          <label class="checkbox-label"><input type="checkbox" checked value="PROCESS" class="filter-node-type"> Process</label>
+          <label class="checkbox-label"><input type="checkbox" checked value="NETWORK_ENDPOINT" class="filter-node-type"> Network</label>
+          <label class="checkbox-label"><input type="checkbox" checked value="LLM" class="filter-node-type"> LLM</label>
+          <label class="checkbox-label"><input type="checkbox" checked value="USER" class="filter-node-type"> User</label>
+        </div>
+        <div class="filter-group">
+          <span class="filter-title">Evidence Quality</span>
+          <label class="checkbox-label"><input type="checkbox" checked value="OBSERVED" class="filter-quality"> Observed (1.0)</label>
+          <label class="checkbox-label"><input type="checkbox" checked value="DERIVED" class="filter-quality"> Derived (≥0.9)</label>
+          <label class="checkbox-label"><input type="checkbox" checked value="INFERRED" class="filter-quality"> Inferred (≤0.7)</label>
+        </div>
+      </div>
+
+      <!-- Sessions Panel -->
+      <div id="panelSessions" class="side-panel">
+        <div class="panel-header">
+          <span>Session History</span>
+        </div>
+        <div id="sessionHistoryList" class="session-list"></div>
+      </div>
+    </aside>
+
+    <!-- Center Graph Canvas Area -->
+    <section class="center-canvas-wrap">
+      <!-- Semantic Warning Banner -->
+      <div class="lens-disclaimer-banner">
+        <span class="banner-badge">LENS: EXECUTION PROVENANCE</span>
+        <span class="banner-text">Displays runtime execution and causal task relationships. <strong>(Data Lineage unestablished until Milestone 3)</strong></span>
+      </div>
+
+      <!-- Cytoscape Graph Canvas -->
+      <div id="cy" class="cy-container"></div>
+
+      <!-- Canvas Floating Overlay Controls -->
+      <div class="canvas-floating-controls">
+        <button id="zoomInBtn" class="floating-btn" title="Zoom In">+</button>
+        <button id="zoomOutBtn" class="floating-btn" title="Zoom Out">-</button>
+        <button id="centerBtn" class="floating-btn" title="Center on Root">⌖</button>
+      </div>
+    </section>
+
+    <!-- Right Inspector Panel -->
+    <aside class="sidebar-right">
+      <div class="inspector-tabs">
+        <button class="insp-tab active" data-insp="nodeInsp">Node</button>
+        <button class="insp-tab" data-insp="edgeInsp">Edge</button>
+        <button class="insp-tab" data-insp="eventInsp">Event</button>
+        <button class="insp-tab" data-insp="traceInsp">Trace</button>
+        <button class="insp-tab" data-insp="findingInsp">Finding</button>
+      </div>
+
+      <!-- Node Inspector Tab -->
+      <div id="nodeInsp" class="insp-panel active">
+        <div class="insp-header">
+          <span id="nodeInspTitle" class="insp-title">Select a Node</span>
+          <span id="nodeInspType" class="badge">NONE</span>
+        </div>
+        <div id="nodeInspBody" class="insp-body">
+          <p class="empty-hint">Click on any node in the graph or an event in the timeline to inspect evidence details.</p>
+        </div>
+      </div>
+
+      <!-- Edge Inspector Tab -->
+      <div id="edgeInsp" class="insp-panel">
+        <div class="insp-header">
+          <span id="edgeInspTitle" class="insp-title">Select an Edge</span>
+          <span id="edgeInspType" class="badge">EDGE</span>
+        </div>
+        <div id="edgeInspBody" class="insp-body">
+          <p class="empty-hint">Click on any directed relationship edge to inspect supporting evidence and quality tier.</p>
+        </div>
+      </div>
+
+      <!-- Event Inspector Tab -->
+      <div id="eventInsp" class="insp-panel">
+        <div class="insp-header">
+          <span id="eventInspTitle" class="insp-title">Select an Event</span>
+          <span id="eventInspType" class="badge">EVENT</span>
+        </div>
+        <div id="eventInspBody" class="insp-body">
+          <p class="empty-hint">Click on an event in the timeline to view immutable payload and causal context.</p>
+        </div>
+      </div>
+
+      <!-- Lineage Trace Inspector Tab (Milestone 3) -->
+      <div id="traceInsp" class="insp-panel">
+        <div class="insp-header">
+          <span id="traceInspTitle" class="insp-title">Lineage Trace</span>
+          <span id="traceInspBadge" class="badge">TRACE</span>
+        </div>
+        <div id="traceInspBody" class="insp-body">
+          <p class="empty-hint">Select a Data Entity and click 'TRACE ORIGIN' or 'TRACE DESTINATIONS' to view proven information flow hops.</p>
+        </div>
+      </div>
+
+      <!-- Finding Inspector Tab (Milestone 4) -->
+      <div id="findingInsp" class="insp-panel">
+        <div class="insp-header">
+          <span id="findingInspTitle" class="insp-title">Security Finding</span>
+          <span id="findingInspSeverity" class="badge">ALERT</span>
+        </div>
+        <div id="findingInspBody" class="insp-body">
+          <p class="empty-hint">Select a security alert from the Alerts panel or click a finding node to inspect proven risk path details.</p>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- Bottom Execution Timeline -->
+  <footer class="bottom-timeline-strip">
+    <div class="timeline-header">
+      <span class="timeline-title">EXECUTION TIMELINE</span>
+      <span class="timeline-sub">Ordered strictly by session sequence_number</span>
+    </div>
+    <div id="timelineScroll" class="timeline-scroll-strip">
+      <div class="timeline-empty">Awaiting events from live agent execution...</div>
+    </div>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
